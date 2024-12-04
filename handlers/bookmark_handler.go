@@ -10,14 +10,22 @@ import (
 
 func GetBookmarks(c *gin.Context) {
     userID := c.GetString("user_id")
+    if userID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "User ID is required",
+            "code": "MISSING_USER_ID",
+        })
+        return
+    }
     
     twitterService := services.NewTwitterService()
-    var response *models.BookmarkResponse
     response, err := twitterService.GetBookmarks(userID)
     
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{
             "error": "Failed to fetch bookmarks",
+            "details": err.Error(),
+            "code": "TWITTER_API_ERROR",
         })
         return
     }
