@@ -24,14 +24,15 @@ func NewTwitterService() *TwitterService {
 }
 
 func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, error) {
-    url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks", userID)
+    url := "https://api.twitter.com/2/users/me/bookmarks"
     
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
         return nil, err
     }
 
-    req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.config.TwitterAPIKey))
+    req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.config.TwitterAPISecret))
+    req.Header.Add("Content-Type", "application/json")
     
     resp, err := s.client.Do(req)
     if err != nil {
@@ -39,12 +40,43 @@ func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, 
     }
     defer resp.Body.Close()
 
-    var bookmarkResp models.BookmarkResponse
-    if err := json.NewDecoder(resp.Body).Decode(&bookmarkResp); err != nil {
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("Twitter API error: %d", resp.StatusCode)
+    }
+
+    var twitterResp struct {
+        Data []struct {
+            ID        string    `json:"id"`
+            Text      string    `json:"text"`
+            CreatedAt time.Time `json:"created_at"`
+            AuthorID  string    `json:"author_id"`
+        } `json:"data"`
+        Meta struct {
+            NextToken string `json:"next_token"`
+        } `json:"meta"`
+    }
+
+    if err := json.NewDecoder(resp.Body).Decode(&twitterResp); err != nil {
         return nil, err
     }
 
-    return &bookmarkResp, nil
+    bookmarks := make([]models.Bookmark, 0)
+    for _, tweet := range twitterResp.Data {
+        bookmarks = append(bookmarks, models.Bookmark{
+            ID:        tweet.ID,
+            TweetID:   tweet.ID,
+            Text:      tweet.Text,
+            CreatedAt: tweet.CreatedAt,
+            Author: models.Author{
+                ID: tweet.AuthorID,
+            },
+        })
+    }
+
+    return &models.BookmarkResponse{
+        Bookmarks: bookmarks,
+        NextToken: twitterResp.Meta.NextToken,
+    }, nil
 }
 
 func (s *TwitterService) GetBookmarksAfterDate(userID string, after time.Time) (*models.BookmarkResponse, error) {
