@@ -24,14 +24,14 @@ func NewTwitterService() *TwitterService {
 }
 
 func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, error) {
-    url := "https://api.twitter.com/2/users/me/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name"
+    url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name", userID)
     
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
         return nil, err
     }
 
-    req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.config.TwitterAPIKey))
+    req.Header.Add("Authorization", fmt.Sprintf("OAuth oauth_consumer_key=\"%s\", oauth_token=\"%s\"", s.config.TwitterAPIKey, s.config.TwitterAPISecret))
     req.Header.Add("Content-Type", "application/json")
     
     resp, err := s.client.Do(req)
