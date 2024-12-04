@@ -24,14 +24,14 @@ func NewTwitterService() *TwitterService {
 }
 
 func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, error) {
-    url := "https://api.twitter.com/2/users/me/bookmarks"
+    url := "https://api.twitter.com/2/users/me/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name"
     
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
         return nil, err
     }
 
-    req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.config.TwitterAPISecret))
+    req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.config.TwitterAPIKey))
     req.Header.Add("Content-Type", "application/json")
     
     resp, err := s.client.Do(req)
@@ -51,6 +51,13 @@ func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, 
             CreatedAt time.Time `json:"created_at"`
             AuthorID  string    `json:"author_id"`
         } `json:"data"`
+        Includes struct {
+            Users []struct {
+                ID       string `json:"id"`
+                Username string `json:"username"`
+                Name     string `json:"name"`
+            } `json:"users"`
+        } `json:"includes"`
         Meta struct {
             NextToken string `json:"next_token"`
         } `json:"meta"`
@@ -60,16 +67,37 @@ func (s *TwitterService) GetBookmarks(userID string) (*models.BookmarkResponse, 
         return nil, err
     }
 
+    // Create a map of user IDs to user data
+    userMap := make(map[string]struct {
+        Username string
+        Name     string
+    })
+    for _, user := range twitterResp.Includes.Users {
+        userMap[user.ID] = struct {
+            Username string
+            Name     string
+        }{
+            Username: user.Username,
+            Name:     user.Name,
+        }
+    }
+
     bookmarks := make([]models.Bookmark, 0)
     for _, tweet := range twitterResp.Data {
+        author := models.Author{
+            ID: tweet.AuthorID,
+        }
+        if userData, ok := userMap[tweet.AuthorID]; ok {
+            author.Username = userData.Username
+            author.Name = userData.Name
+        }
+        
         bookmarks = append(bookmarks, models.Bookmark{
             ID:        tweet.ID,
             TweetID:   tweet.ID,
             Text:      tweet.Text,
             CreatedAt: tweet.CreatedAt,
-            Author: models.Author{
-                ID: tweet.AuthorID,
-            },
+            Author:    author,
         })
     }
 
