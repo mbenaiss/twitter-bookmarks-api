@@ -1,56 +1,49 @@
 package main
 
 import (
-    "log"
-    "time"
-    "github.com/gin-gonic/gin"
-    "github.com/golang-jwt/jwt"
-    "twitter-bookmarks/config"
-    "twitter-bookmarks/handlers"
-    "twitter-bookmarks/middleware"
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"twitter-bookmarks/api"
+	"twitter-bookmarks/config"
+	"twitter-bookmarks/services"
 )
 
 func main() {
-    // Initialize router
-    r := gin.Default()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to get config: %v", err)
+	}
 
-    // Load configuration
-    cfg := config.Load()
+	ctx := context.Background()
 
-    // Apply global middleware
-    r.Use(gin.Logger())
-    r.Use(middleware.RateLimit(cfg.RateLimit))
-    r.Use(middleware.CORS())
+	twitterService := services.NewTwitterService(cfg.TwitterAPIKey, cfg.TwitterAPISecret)
+	srv := api.New(cfg.Port, api.WithRegisterRoutes(twitterService, cfg.SecretKey))
 
-    // API routes
-    api := r.Group("/api/v1")
-    api.Use(middleware.Auth())
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 
-    // Bookmark endpoints
-    api.GET("/bookmarks", handlers.GetBookmarks)
-    api.GET("/bookmarks/filter", handlers.GetBookmarksWithDateFilter)
+	go func() {
+		if err := srv.StartHTTP(); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("An error was occurred %v", err)
+			}
+			<-quit
+		}
+	}()
 
-    // Health check
-    r.GET("/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok"})
-    })
+	<-quit
 
-    // Development only - token generator
-    if gin.Mode() != gin.ReleaseMode {
-        r.GET("/debug/token", func(c *gin.Context) {
-            token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-                "user_id": "12345", // Test user ID
-                "exp":     time.Now().Add(time.Hour * 24).Unix(),
-            })
-            tokenString, err := token.SignedString([]byte(cfg.JWTSecret))
-            if err != nil {
-                c.JSON(500, gin.H{"error": "Could not generate token"})
-                return
-            }
-            c.JSON(200, gin.H{"token": tokenString})
-        })
-    }
+	log.Println("shutting down server...")
 
-    // Start server
-    log.Fatal(r.Run("0.0.0.0:8000"))
+	if err := srv.Shutdown(ctx); err != nil {
+		panic(err)
+	}
+
+	log.Println("server shutdown")
 }

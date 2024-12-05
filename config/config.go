@@ -1,37 +1,34 @@
 package config
 
 import (
-    "os"
-    "time"
+	"fmt"
+	"log"
+
+	"github.com/joho/godotenv"
+	"github.com/kelseyhightower/envconfig"
 )
 
+// Config is the configuration for the application
 type Config struct {
-    TwitterAPIKey      string
-    TwitterAPISecret   string
-    JWTSecret         string
-    RateLimit         RateLimitConfig
+	TwitterAPIKey    string `envconfig:"TWITTER_API_KEY"`
+	TwitterAPISecret string `envconfig:"TWITTER_API_SECRET"`
+	UserID           string `envconfig:"USER_ID"`
+	SecretKey        string `envconfig:"SECRET_KEY"`
+	Port             string `envconfig:"PORT" default:"8080"`
 }
 
-type RateLimitConfig struct {
-    Requests    int
-    TimeWindow  time.Duration
-}
+// Load loads the configuration from the environment variables
+func Load() (Config, error) {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Println("No .env file found")
+	}
 
-func Load() *Config {
-    return &Config{
-        TwitterAPIKey:    getEnvOrDefault("TWITTER_API_KEY", ""),
-        TwitterAPISecret: getEnvOrDefault("TWITTER_API_SECRET", ""),
-        JWTSecret:       getEnvOrDefault("JWT_SECRET", "your-secret-key"),
-        RateLimit: RateLimitConfig{
-            Requests:   100,
-            TimeWindow: time.Minute,
-        },
-    }
-}
+	var c Config
+	err = envconfig.Process("", &c)
+	if err != nil {
+		return Config{}, fmt.Errorf("unable to get envconfig %w", err)
+	}
 
-func getEnvOrDefault(key, defaultValue string) string {
-    if value := os.Getenv(key); value != "" {
-        return value
-    }
-    return defaultValue
+	return c, nil
 }

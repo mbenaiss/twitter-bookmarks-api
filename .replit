@@ -1,10 +1,10 @@
-modules = ["go", "go-1.19"]
+modules = ["go", "go-1.23", "go-1.21"]
 
 [nix]
 channel = "stable-24_05"
 
 [workflows]
-runButton = "Project"
+runButton = "API Server"
 
 [[workflows.workflow]]
 name = "Project"
@@ -35,3 +35,11 @@ run = ["sh", "-c", "go run main.go"]
 [[ports]]
 localPort = 8000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 39415
+externalPort = 3001
