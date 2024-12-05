@@ -1,10 +1,10 @@
-modules = ["go", "go-1.23", "go-1.21"]
+modules = ["go", "go-1.23"]
 
 [nix]
 channel = "stable-24_05"
 
 [workflows]
-runButton = "API Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Project"
@@ -28,6 +28,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "go run main.go"
+waitForPort = 8080
 
 [deployment]
 run = ["sh", "-c", "go run main.go"]
@@ -39,7 +40,3 @@ externalPort = 80
 [[ports]]
 localPort = 8080
 externalPort = 8080
-
-[[ports]]
-localPort = 39415
-externalPort = 3001

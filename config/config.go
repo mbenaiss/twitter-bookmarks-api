@@ -12,7 +12,7 @@ import (
 type Config struct {
 	TwitterAPIKey    string `envconfig:"TWITTER_API_KEY"`
 	TwitterAPISecret string `envconfig:"TWITTER_API_SECRET"`
-	UserID           string `envconfig:"USER_ID"`
+	TwitterUserID    string `envconfig:"TWITTER_USER_ID"`
 	SecretKey        string `envconfig:"SECRET_KEY"`
 	Port             string `envconfig:"PORT" default:"8080"`
 }

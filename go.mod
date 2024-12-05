@@ -1,6 +1,6 @@
 module twitter-bookmarks
 
-go 1.21
+go 1.19
 
 require (
 	github.com/gin-gonic/gin v1.9.1

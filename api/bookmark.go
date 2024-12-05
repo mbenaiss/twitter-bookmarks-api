@@ -7,28 +7,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"twitter-bookmarks/api/middleware"
 	"twitter-bookmarks/models"
 )
 
 type service interface {
 	Authenticate(ctx context.Context) (string, error)
-	GetBookmarks(ctx context.Context, userID string, token string) (*models.BookmarkResponse, error)
-	GetBookmarksAfterDate(ctx context.Context, userID string, afterDate time.Time, token string) (*models.BookmarkResponse, error)
+	GetBookmarks(ctx context.Context, token string) (*models.BookmarkResponse, error)
+	GetBookmarksAfterDate(ctx context.Context, afterDate time.Time, token string) (*models.BookmarkResponse, error)
 }
 
 func (s *Server) getBookmarks(service service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Param("user_id")
-		token := c.GetHeader("Authorization")
-		if userID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "User ID is required",
-				"code":  "MISSING_USER_ID",
-			})
+		token, ok := c.Get(middleware.TwitterTokenKey)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
-		response, err := service.GetBookmarks(c.Request.Context(), userID, token)
+		response, err := service.GetBookmarks(c.Request.Context(), token.(string))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to fetch bookmarks",
@@ -43,9 +40,7 @@ func (s *Server) getBookmarks(service service) gin.HandlerFunc {
 
 func (s *Server) getBookmarksWithDateFilter(service service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Param("user_id")
 		dateStr := c.Query("after")
-		token := c.GetHeader("Authorization")
 		afterDate, err := time.Parse(time.RFC3339, dateStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -54,7 +49,13 @@ func (s *Server) getBookmarksWithDateFilter(service service) gin.HandlerFunc {
 			return
 		}
 
-		response, err := service.GetBookmarksAfterDate(c.Request.Context(), userID, afterDate, token)
+		token, ok := c.Get(middleware.TwitterTokenKey)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		response, err := service.GetBookmarksAfterDate(c.Request.Context(), afterDate, token.(string))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to fetch bookmarks",

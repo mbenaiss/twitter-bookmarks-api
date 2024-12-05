@@ -22,7 +22,7 @@ func main() {
 
 	ctx := context.Background()
 
-	twitterService := services.NewTwitterService(cfg.TwitterAPIKey, cfg.TwitterAPISecret)
+	twitterService := services.NewTwitterService(cfg.TwitterAPIKey, cfg.TwitterAPISecret, cfg.TwitterUserID)
 	srv := api.New(cfg.Port, api.WithRegisterRoutes(twitterService, cfg.SecretKey))
 
 	quit := make(chan os.Signal, 1)

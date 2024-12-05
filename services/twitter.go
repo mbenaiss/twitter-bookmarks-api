@@ -17,16 +17,18 @@ type TwitterService struct {
 	client    *http.Client
 	apiKey    string
 	secretKey string
+	userID    string
 }
 
 // NewTwitterService creates a new TwitterService
-func NewTwitterService(apiKey, secretKey string) *TwitterService {
+func NewTwitterService(apiKey, secretKey, userID string) *TwitterService {
 	return &TwitterService{
 		client: &http.Client{
 			Timeout: time.Second * 10,
 		},
 		apiKey:    apiKey,
 		secretKey: secretKey,
+		userID:    userID,
 	}
 }
 
@@ -66,8 +68,8 @@ func (s *TwitterService) Authenticate(ctx context.Context) (string, error) {
 }
 
 // GetBookmarks gets the bookmarks for a user
-func (s *TwitterService) GetBookmarks(ctx context.Context, userID string, token string) (*models.BookmarkResponse, error) {
-	url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name", userID)
+func (s *TwitterService) GetBookmarks(ctx context.Context, token string) (*models.BookmarkResponse, error) {
+	url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name", s.userID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -77,37 +79,22 @@ func (s *TwitterService) GetBookmarks(ctx context.Context, userID string, token 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
-	var lastErr error
-	maxRetries := 3
-	
-	for i := 0; i < maxRetries; i++ {
-		resp, err := s.client.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("request failed: %w", err)
-			time.Sleep(time.Second * time.Duration(i+1))
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			lastErr = fmt.Errorf("rate limit exceeded")
-			time.Sleep(time.Second * time.Duration(i+1))
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("Twitter API error: status=%d", resp.StatusCode)
-		}
-		
-		return s.parseBookmarksResponse(resp)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	
-	return nil, fmt.Errorf("failed after %d retries: %v", maxRetries, lastErr)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Twitter API error: status=%d", resp.StatusCode)
+	}
+
+	return s.parseBookmarksResponse(resp)
 }
 
 // GetBookmarksAfterDate gets the bookmarks for a user after a specific date
-func (s *TwitterService) GetBookmarksAfterDate(ctx context.Context, userID string, after time.Time, token string) (*models.BookmarkResponse, error) {
-	bookmarks, err := s.GetBookmarks(ctx, userID, token)
+func (s *TwitterService) GetBookmarksAfterDate(ctx context.Context, after time.Time, token string) (*models.BookmarkResponse, error) {
+	bookmarks, err := s.GetBookmarks(ctx, token)
 	if err != nil {
 		return nil, err
 	}
