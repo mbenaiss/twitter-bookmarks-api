@@ -50,30 +50,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// handleWithRetry wraps a handler with retry logic for 401 errors
-func (s *Server) handleWithRetry(handler gin.HandlerFunc, service service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		handler(c)
-		
-		// Si on reçoit une erreur 401, on essaie de récupérer un nouveau token et de réessayer
-		if c.Writer.Status() == http.StatusUnauthorized {
-			tokenMiddleware := middleware.GetTokenFromTwitter(service)
-			tokenMiddleware(c)
-			
-			// Si l'authentification a réussi, on réessaie l'appel original
-			if c.Writer.Status() != http.StatusUnauthorized {
-				handler(c)
-			}
-		}
-	}
-}
-
 // WithRegisterRoutes register the routes for the server.
-func WithRegisterRoutes(service service, secretKey string) Options {
+func WithRegisterRoutes(service service, secretKey string, codeVerifier string) Options {
 	return func(s *Server) {
 		s.handler.Use(middleware.Auth(secretKey))
 
-		s.handler.GET("/bookmarks", s.handleWithRetry(s.getBookmarks(service), service))
-		s.handler.GET("/bookmarks/filter", s.handleWithRetry(s.getBookmarksWithDateFilter(service), service))
+		s.handler.GET("/authenticate", s.authenticate(service, codeVerifier))
+		s.handler.GET("/bookmarks", s.getBookmarks(service))
+		s.handler.GET("/bookmarks/filter", s.getBookmarksWithDateFilter(service))
 	}
 }

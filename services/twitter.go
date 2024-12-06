@@ -2,78 +2,154 @@ package services
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"twitter-bookmarks/models"
 )
 
-// TwitterService handles communication with the Twitter API
 type TwitterService struct {
-	client    *http.Client
-	apiKey    string
-	secretKey string
-	userID    string
+	clientID     string
+	clientSecret string
+	redirectURI  string
+	codeVerifier string
+	refreshToken string
+	client       *http.Client
+	userID       string
 }
 
-// NewTwitterService creates a new TwitterService
-func NewTwitterService(apiKey, secretKey, userID string) *TwitterService {
+func NewTwitterService(clientID, clientSecret, redirectURI string) *TwitterService {
 	return &TwitterService{
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		redirectURI:  redirectURI,
 		client: &http.Client{
 			Timeout: time.Second * 10,
 		},
-		apiKey:    apiKey,
-		secretKey: secretKey,
-		userID:    userID,
 	}
 }
 
-// Authenticate authenticates with the Twitter API
-func (s *TwitterService) Authenticate(ctx context.Context) (string, error) {
-	url := "https://api.twitter.com/oauth2/token"
-	credentials := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", s.apiKey, s.secretKey)))
-	data := strings.NewReader("grant_type=client_credentials")
+// GenerateCodeVerifier creates a PKCE code verifier
+func GenerateCodeVerifier() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+	const length = 43
+	verifier := make([]byte, length)
+	for i := range verifier {
+		verifier[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	}
+	return string(verifier)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, data)
+// Authenticate authenticates the user and retrieves an access token
+func (s *TwitterService) Authenticate(ctx context.Context, authorizationCode string) (string, error) {
+	s.codeVerifier = GenerateCodeVerifier()
+
+	apiURL := "https://api.twitter.com/2/oauth2/token"
+
+	data := url.Values{}
+	data.Set("client_id", s.clientID)
+	data.Set("grant_type", "authorization_code")
+	data.Set("code", authorizationCode)
+	data.Set("redirect_uri", s.redirectURI)
+	data.Set("code_verifier", s.codeVerifier)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %s", credentials))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", fmt.Errorf("failed to make request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Twitter API error: status=%d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("error from API: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
-	var authResp struct {
-		AccessToken string `json:"access_token"`
+	var tokenResponse struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+		Scope        string `json:"scope"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return authResp.AccessToken, nil
+	s.refreshToken = tokenResponse.RefreshToken
+
+	return tokenResponse.AccessToken, nil
+}
+
+// RefreshAccessToken renews the access token using the refresh token
+func (s *TwitterService) RefreshAccessToken(ctx context.Context) (string, error) {
+	if s.refreshToken == "" {
+		return "", fmt.Errorf("no refresh token available")
+	}
+
+	apiURL := "https://api.twitter.com/2/oauth2/token"
+
+	data := url.Values{}
+	data.Set("client_id", s.clientID)
+	data.Set("grant_type", "refresh_token")
+	data.Set("refresh_token", s.refreshToken)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("error from API: status=%d, body=%s", resp.StatusCode, string(body))
+	}
+
+	var tokenResponse struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+		Scope        string `json:"scope"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if tokenResponse.RefreshToken != "" {
+		s.refreshToken = tokenResponse.RefreshToken
+	}
+
+	return tokenResponse.AccessToken, nil
 }
 
 // GetBookmarks gets the bookmarks for a user
 func (s *TwitterService) GetBookmarks(ctx context.Context, token string) (*models.BookmarkResponse, error) {
-	url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks?tweet.fields=created_at,author_id,text&expansions=author_id&user.fields=username,name", s.userID)
+	url := fmt.Sprintf("https://api.twitter.com/2/users/%s/bookmarks", s.userID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("échec de création de la requête: %w", err)
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
@@ -93,7 +169,7 @@ func (s *TwitterService) GetBookmarks(ctx context.Context, token string) (*model
 }
 
 // GetBookmarksAfterDate gets the bookmarks for a user after a specific date
-func (s *TwitterService) GetBookmarksAfterDate(ctx context.Context, after time.Time, token string) (*models.BookmarkResponse, error) {
+func (s *TwitterService) GetBookmarksAfterDate(ctx context.Context, token string, after time.Time) (*models.BookmarkResponse, error) {
 	bookmarks, err := s.GetBookmarks(ctx, token)
 	if err != nil {
 		return nil, err

@@ -31,6 +31,13 @@ func Auth(secretKey string) gin.HandlerFunc {
 // GetTokenFromTwitter returns the token from the Twitter header
 func GetTokenFromTwitter(service service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, exist := c.Get(TwitterTokenKey)
+		if exist {
+			c.Next()
+
+			return
+		}
+
 		token, err := service.Authenticate(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})

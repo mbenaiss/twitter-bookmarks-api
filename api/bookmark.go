@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,9 +13,24 @@ import (
 )
 
 type service interface {
-	Authenticate(ctx context.Context) (string, error)
+	Authenticate(ctx context.Context, code string) (string, error)
 	GetBookmarks(ctx context.Context, token string) (*models.BookmarkResponse, error)
-	GetBookmarksAfterDate(ctx context.Context, afterDate time.Time, token string) (*models.BookmarkResponse, error)
+	GetBookmarksAfterDate(ctx context.Context, token string, date time.Time) (*models.BookmarkResponse, error)
+}
+
+func (s *Server) authenticate(service service, codeVerifier string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, err := service.Authenticate(c.Request.Context(), codeVerifier)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to authenticate",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"token": token})
+	}
 }
 
 func (s *Server) getBookmarks(service service) gin.HandlerFunc {
@@ -24,6 +40,8 @@ func (s *Server) getBookmarks(service service) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
+
+		fmt.Println(token)
 
 		response, err := service.GetBookmarks(c.Request.Context(), token.(string))
 		if err != nil {
@@ -55,7 +73,7 @@ func (s *Server) getBookmarksWithDateFilter(service service) gin.HandlerFunc {
 			return
 		}
 
-		response, err := service.GetBookmarksAfterDate(c.Request.Context(), afterDate, token.(string))
+		response, err := service.GetBookmarksAfterDate(c.Request.Context(), token.(string), afterDate)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to fetch bookmarks",

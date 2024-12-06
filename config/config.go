@@ -10,11 +10,17 @@ import (
 
 // Config is the configuration for the application
 type Config struct {
-	TwitterAPIKey    string `envconfig:"TWITTER_API_KEY"`
-	TwitterAPISecret string `envconfig:"TWITTER_API_SECRET"`
-	TwitterUserID    string `envconfig:"TWITTER_USER_ID"`
-	SecretKey        string `envconfig:"SECRET_KEY"`
-	Port             string `envconfig:"PORT" default:"8080"`
+	TwitterConsumerKey    string `envconfig:"TWITTER_CONSUMER_KEY"`
+	TwitterConsumerSecret string `envconfig:"TWITTER_CONSUMER_SECRET"`
+	TwitterAccessToken    string `envconfig:"TWITTER_ACCESS_TOKEN"`
+	TwitterAccessSecret   string `envconfig:"TWITTER_ACCESS_SECRET"`
+	TwitterUserID         string `envconfig:"TWITTER_USER_ID"`
+	SecretKey             string `envconfig:"SECRET_KEY"`
+	TwitterClientID       string `envconfig:"TWITTER_CLIENT_ID"`
+	TwitterClientSecret   string `envconfig:"TWITTER_CLIENT_SECRET"`
+	TwitterAuthToken      string `envconfig:"TWITTER_AUTH_TOKEN"`
+	TwitterRedirectURI    string `envconfig:"TWITTER_REDIRECT_URI"`
+	Port                  string `envconfig:"PORT" default:"8080"`
 }
 
 // Load loads the configuration from the environment variables
